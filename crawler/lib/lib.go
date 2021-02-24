@@ -1,107 +1,6 @@
+// Package lib exposes a series of methods for downloading the course offer from UNAM's Faculty
+// of Science using the website pagina.fciencias.unam.mx
 package lib
-
-type courseOfferPayload struct {
-	Container *scheduleContainer `json:"queryhorarios"`
-}
-
-type scheduleContainer struct {
-	Container *scheduleDataContainer `json:"data"`
-}
-
-type scheduleDataContainer struct {
-	Groups []courseGroup `json:"grupos_por_asignatura"`
-}
-
-type courseGroup struct {
-	Details *groupDetails `json:"grupo__grupo"`
-	Staff   []groupStaff  `json:"grupo__profesores"`
-}
-
-type groupDetails struct {
-	Signups        int              `json:"grupo__alumnos"`
-	Capacity       int              `json:"grupo__cupo"`
-	HasDescription bool             `json:"grupo__tiene_presentacion"`
-	Code           string           `json:"grupo__clave"`
-	ID             int              `json:"grupo__id"`
-	Name           *groupCourseName `json:"grupo__asignatura"`
-}
-
-type groupCourseName struct {
-	Name string `json:"asignatura__nombre"`
-}
-
-type groupStaff struct {
-	Details      *staffDetails       `json:"profesor__persona"`
-	Availability []staffAvailability `json:"profesor__horarios"`
-}
-
-type staffDetails struct {
-	ID        int    `json:"persona__id"`
-	Name      string `json:"persona__nombre"`
-	FirstName string `json:"persona__apellido_1"`
-	LastName  string `json:"persona__apellido_2"`
-}
-
-type staffAvailability struct {
-	Location    *staffAvailabilityLocation `json:"profesor_horario__lugar"`
-	OnMonday    bool                       `json:"profesor_horario__lu"`
-	OnTuesday   bool                       `json:"profesor_horario__ma"`
-	OnWednesday bool                       `json:"profesor_horario__mi"`
-	OnThursday  bool                       `json:"profesor_horario__ju"`
-	OnFriday    bool                       `json:"profesor_horario__vi"`
-	OnSaturday  bool                       `json:"profesor_horario__sa"`
-	OnSunday    bool                       `json:"profesor_horario__do"`
-	StartTime   string                     `json:"profesor_horario__hora_inicio"`
-	EndTime     string                     `json:"profesor_horario__hora_termino"`
-	Role        *staffRole                 `json:"grupo__cargo"`
-}
-
-type staffRole struct {
-	Name string `json:"cargo__nombre_corto"`
-}
-
-type staffAvailabilityLocation struct {
-	ID   int    `json:"lugar__id"`
-	Name string `json:"lugar__nombre"`
-}
-
-func Run() error {
-	//data, err := foo("docencia/horarios/indice")
-	//if err != nil {
-	//	return err
-	//}
-	//content := &entryPayload{}
-	//if err := json.Unmarshal([]byte(data), content); err != nil {
-	//	return err
-	//}
-	//
-	//plan := content.QueryData.Data.Majors[0].Plans[0]
-	//planData, err := foo(fmt.Sprintf("docencia/horarios/indiceplan/%s/%d", content.Semester, plan.ID))
-	//if err != nil {
-	//	return err
-	//}
-	//
-	//planContent := &planSchedulePayload{}
-	//if err := json.Unmarshal([]byte(planData), planContent); err != nil {
-	//	return err
-	//}
-	//
-	//course := planContent.Container.Container.Container[0].Courses[4].Course
-	//courseData, err := foo(fmt.Sprintf("docencia/horarios/20212/%d/%d", plan.ID, course.ID))
-	//if err != nil {
-	//	return err
-	//}
-	//courseOffer := &courseOfferPayload{}
-	//if err := json.Unmarshal([]byte(courseData), courseOffer); err != nil {
-	//	return err
-	//}
-	//
-	//fmt.Println(courseOffer)
-	//fmt.Println(planContent)
-	//fmt.Println(content)
-
-	return nil
-}
 
 func GetMajors() ([]Major, error) {
 	pageMajors, err := getMajors()
@@ -125,13 +24,105 @@ func GetMajors() ([]Major, error) {
 			}
 		}
 	}
+
 	return majors, nil
 }
 
 func GetCourses(semester string, majorPlanID int) ([]Course, error) {
-	_, err := getCourses(semester, majorPlanID)
+	pageCourse, err := getCourses(semester, majorPlanID)
 	if err != nil {
 		return nil, err
 	}
-	return nil, nil
+
+	var courses []Course
+	for _, s := range pageCourse.Container.Container.Semesters {
+		for _, c := range s.Courses {
+			course := Course{
+				ID:       c.Course.ID,
+				Name:     c.Course.Name,
+				Semester: getSemester(s.Name),
+			}
+			courses = append(courses, course)
+		}
+	}
+	return courses, nil
+}
+
+func GetGroups(semester string, majorPlanID int, courseID int) ([]Group, error) {
+	pageGroups, err := getGroups(semester, majorPlanID, courseID)
+	if err != nil {
+		return nil, err
+	}
+
+	var groups []Group
+	for _, g := range pageGroups.Container.Container.Groups {
+		group := Group{
+			CourseID:       courseID,
+			Signups:        g.Details.Signups,
+			Capacity:       g.Details.Capacity,
+			HasDescription: g.Details.HasDescription,
+			Code:           g.Details.Code,
+			ID:             g.Details.ID,
+			Name:           g.Details.Name.Name,
+			Staff:          make([]GroupStaff, len(g.Staff)),
+		}
+		for i := range g.Staff {
+			group.Staff[i] = GroupStaff{
+				ID:           g.Staff[i].Details.ID,
+				FirstName:    g.Staff[i].Details.FirstName,
+				MiddleName:   g.Staff[i].Details.MiddleName,
+				LastName:     g.Staff[i].Details.LastName,
+				Availability: make([]StaffAvailability, len(g.Staff[i].Availability)),
+			}
+
+			role := ""
+			for j := range g.Staff[i].Availability {
+				group.Staff[i].Availability[j] = StaffAvailability{
+					OnMonday:    g.Staff[i].Availability[j].OnMonday,
+					OnTuesday:   g.Staff[i].Availability[j].OnTuesday,
+					OnWednesday: g.Staff[i].Availability[j].OnWednesday,
+					OnThursday:  g.Staff[i].Availability[j].OnThursday,
+					OnFriday:    g.Staff[i].Availability[j].OnFriday,
+					OnSaturday:  g.Staff[i].Availability[j].OnSaturday,
+					OnSunday:    g.Staff[i].Availability[j].OnSunday,
+					StartTime:   g.Staff[i].Availability[j].StartTime,
+					EndTime:     g.Staff[i].Availability[j].EndTime,
+				}
+				if g.Staff[i].Availability[j].Location != nil {
+					group.Staff[i].Availability[j].Location = &ClassLocation{
+						ID:   g.Staff[i].Availability[j].Location.ID,
+						Name: g.Staff[i].Availability[j].Location.Name,
+					}
+				}
+				role = g.Staff[i].Availability[j].Role.Name
+			}
+			group.Staff[i].Role = getRole(role)
+		}
+		groups = append(groups, group)
+	}
+	return groups, nil
+}
+
+func getSemester(value string) Semester {
+	trans := map[string]Semester{
+		"Primer Semestre":  First,
+		"Segundo Semestre": Second,
+		"Tercer Semestre":  Third,
+		"Cuarto Semestre":  Fourth,
+		"Quinto Semestre":  Fifth,
+		"Sexto Semestre":   Sixth,
+		"Séptimo Semester": Seventh,
+		"Octavo Semestre":  Eight,
+		"Noveno Semester":  Ninth,
+	}
+	return trans[value]
+}
+
+func getRole(value string) StaffRole {
+	trans := map[string]StaffRole{
+		"Profesor":                ProfessorStaffRole,
+		"Ayudante":                AssistantStaffRole,
+		"Ayudante de Laboratorio": LabAssistantStaffRole,
+	}
+	return trans[value]
 }

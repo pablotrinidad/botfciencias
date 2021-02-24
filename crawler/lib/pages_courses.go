@@ -1,5 +1,7 @@
 package lib
 
+import "fmt"
+
 const (
 	planCoursesPathURL = "docencia/horarios/indiceplan/%s/%d"
 )
@@ -32,7 +34,8 @@ type pagePlanCourseSemesterCourse struct {
 
 func getCourses(semester string, majorPlanID int) (*pagePlanCourseMainPayload, error) {
 	content := &pagePlanCourseMainPayload{}
-	if err := loadPageContent(majorsPathURL, content); err != nil {
+	url := fmt.Sprintf(planCoursesPathURL, semester, majorPlanID)
+	if err := loadPageContent(url, content); err != nil {
 		return nil, err
 	}
 	return content, nil
